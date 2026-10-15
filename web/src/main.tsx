@@ -5,7 +5,7 @@ import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from 'r
 import { createRoot } from 'react-dom/client';
 import type { Application, ClientMsg, ServerMsg, Session, Stamp } from '../../server/types.ts';
 import { Plaza, Portrait, lookFor, type Walker } from './scene.tsx';
-import { Desk } from './desk.tsx';
+import { Desk, type Ink } from './desk.tsx';
 import { Cabinet, Folder, RuleBook } from './cabinet.tsx';
 import { I18n, LANGS, type Lang } from './i18n.ts';
 
@@ -80,6 +80,11 @@ const SFX = {
     noise(ac, 0.07, 'lowpass', 900, 0.8);
   },
   paper: (ac: AudioContext) => noise(ac, 0.28, 'bandpass', 2600, 0.35),
+  // Stamp hitting bare wood: duller and lower than on paper.
+  desk: (ac: AudioContext) => {
+    tone(ac, 95, 0.12, 0.6, 0, 40);
+    noise(ac, 0.05, 'lowpass', 400, 0.6);
+  },
   // Page flip: a quick bright swish followed by a soft landing.
   page: (ac: AudioContext) => {
     noise(ac, 0.12, 'highpass', 3800, 0.3);
@@ -137,7 +142,8 @@ function App() {
   const [settings, setSettings] = useState(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
-  const [ink, setInk] = useState<Stamp | null>(null);
+  const [ink, setInk] = useState<Ink | null>(null);
+  const pressStamp = useRef<((s: Stamp, auto?: boolean) => void) | null>(null);
   const [note, setNote] = useState('');
   const [noteShake, setNoteShake] = useState(false);
   const [shake, setShake] = useState(false);
@@ -184,6 +190,18 @@ function App() {
     }
   }, [currentId, current]);
 
+  // Notify when a session finishes its turn and waits for the user.
+  const prevStatus = useRef(new Map<string, string>());
+  useEffect(() => {
+    for (const s of sessions) {
+      const prev = prevStatus.current.get(s.id);
+      prevStatus.current.set(s.id, s.status);
+      if (s.status !== 'input' || !prev || prev === 'input') continue;
+      if (settings.notify && document.hidden && 'Notification' in window && Notification.permission === 'granted')
+        new Notification(t.yourTurn(s.name), { body: s.recent.at(-1)?.text.slice(0, 180) ?? '', tag: 'turn-' + s.id });
+    }
+  }, [sessions, settings.notify, t]);
+
   // New application notification + tab title
   const seen = useRef(new Set<string>());
   useEffect(() => {
@@ -211,19 +229,21 @@ function App() {
     noteRef.current?.focus();
   };
 
-  const stamp = (s: Stamp) => {
+  // Impact of a stamp press: ink lands only if the request form was under the rubber.
+  const stamp = (s: Stamp, at: { x: number; y: number } | null) => {
     if (!current) return;
-    if (s === 'note' && !note.trim()) shakeNote();
-    play('stamp');
-    setInk(s);
     setShake(true);
     setTimeout(() => setShake(false), 230);
+    if (!at) return play('desk');
+    play('stamp');
+    if (s === 'note' && !note.trim()) shakeNote();
+    setInk({ stamp: s, ...at, rot: Math.round(Math.random() * 16 - 11) });
   };
 
   const submit = () => {
     if (!current) return callNext();
     // A note sent without a stamp counts as "NOTE only" (send back).
-    const s: Stamp | null = ink ?? (note.trim() ? 'note' : null);
+    const s: Stamp | null = ink?.stamp ?? (note.trim() ? 'note' : null);
     if (!s) return;
     if (s === 'note' && !note.trim()) return shakeNote();
     send({ type: 'decide', appId: current.id, stamp: s, note: note.trim() || undefined });
@@ -257,9 +277,9 @@ function App() {
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
-      if (k === 'a') stamp('approve');
-      else if (k === 'r') stamp('deny');
-      else if ((k === 'p' || k === 'k') && current?.canPersist) stamp('permanent'); // P (English) / K (Kalıcı)
+      if (k === 'a') pressStamp.current?.('approve', true);
+      else if (k === 'r') pressStamp.current?.('deny', true);
+      else if (k === 'p' || k === 'k') pressStamp.current?.('permanent', true); // P (English) / K (Kalıcı)
       else if (k === 'n') {
         e.preventDefault();
         noteRef.current?.focus();
@@ -386,6 +406,7 @@ function App() {
             onSubmit={submit}
             onRules={() => setRulesOpen(true)}
             onPageTurn={() => play('page')}
+            pressRef={pressStamp}
           />
 
           <Cabinet sessions={sessions} onOpen={setFolderId} />

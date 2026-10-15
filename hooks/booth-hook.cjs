@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Checkpoint Booth — Claude Code hook bridge (zero dependencies).
+// Codes, Please — Claude Code hook bridge (zero dependencies).
 // Forwards the hook event on stdin to the local server and prints the server's JSON reply to stdout.
 // Safety net: on any problem, print nothing and exit 0 → Claude Code falls back to its normal flow.
 'use strict';

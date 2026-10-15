@@ -1,5 +1,5 @@
 // File cabinet (session folders), an open folder (history, messages, mail) and the Rule Book.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { RuleSource, Session } from '../../server/types.ts';
 import { useT } from './i18n.ts';
 
@@ -17,6 +17,7 @@ export function Cabinet({ sessions, onOpen }: { sessions: Session[]; onOpen: (id
               <span className={`label ${s.status}`}>{t.status[s.status]}</span>
               {s.mailbox.some((m) => !m.deliveredAt) && <span className="mailflag">✉</span>}
             </span>
+            {s.status === 'working' && s.activity && <span className="activity">› {s.activity}</span>}
           </button>
         ))}
       </div>
@@ -27,6 +28,11 @@ export function Cabinet({ sessions, onOpen }: { sessions: Session[]; onOpen: (id
 export function Folder({ s, onClose, onMail }: { s: Session; onClose: () => void; onMail: (text: string) => void }) {
   const t = useT();
   const [text, setText] = useState('');
+  const chatRef = useRef<HTMLDivElement>(null);
+  // Keep the live log scrolled to the newest line as the agent works.
+  useEffect(() => {
+    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight });
+  }, [s.recent]);
   const hhmm = (at: number) => new Date(at).toLocaleTimeString(t.locale, { hour: '2-digit', minute: '2-digit' });
   const waiting = s.mailbox.filter((m) => !m.deliveredAt);
   const send = () => {
@@ -65,15 +71,19 @@ export function Folder({ s, onClose, onMail }: { s: Session; onClose: () => void
         )}
 
         <h3>{t.recent}</h3>
-        <div className="chat">
+        <div className="chat" ref={chatRef}>
           {s.recent.length ? (
-            s.recent.map((m, i) => (
-              <p key={i}>
-                <span className="r">{m.role === 'user' ? t.user : t.agent}</span>
-                <br />
-                {m.text}
-              </p>
-            ))
+            s.recent.map((m, i) =>
+              m.role === 'tool' ? (
+                <p key={i} className="tool">› {m.text}</p>
+              ) : (
+                <p key={i}>
+                  <span className="r">{m.role === 'user' ? t.user : t.agent}</span>
+                  <br />
+                  {m.text}
+                </p>
+              ),
+            )
           ) : (
             <p className="meta">{t.noRecords}</p>
           )}

@@ -63,18 +63,28 @@ function promptText(e: Entry): string | undefined {
 
 const LINK_RE = /https?:\/\/[^\s"'<>)\]]+/g;
 
+/** One-line description of a tool call: its command, file, URL or query. */
+export function summarize(tool: string, input: Record<string, any>): string {
+  const v = input.command ?? input.file_path ?? input.notebook_path ?? input.url ?? input.query ?? input.pattern ?? input.description;
+  return String(v ?? JSON.stringify(input)).slice(0, 300);
+}
+
 export interface TranscriptInfo {
   title?: string;
   firstPrompt?: string;
   statement?: string;
   research: ResearchItem[];
   recent: ChatLine[];
+  /** Latest tool call, shown as live activity while the agent works. */
+  activity?: string;
+  cwd?: string;
 }
 
-export function analyzeTranscript(file: string | undefined, wantFirstPrompt = false): TranscriptInfo {
+/** `tailBytes` keeps periodic and discovery scans cheap; permission requests read more for full documents. */
+export function analyzeTranscript(file: string | undefined, wantFirstPrompt = false, tailBytes = 1_500_000): TranscriptInfo {
   const info: TranscriptInfo = { research: [], recent: [] };
   if (!file) return info;
-  const tail = readSlice(file, true, 1_500_000);
+  const tail = readSlice(file, true, tailBytes);
 
   // Current turn = everything after the last real user prompt.
   let turnStart = 0;
@@ -87,6 +97,7 @@ export function analyzeTranscript(file: string | undefined, wantFirstPrompt = fa
 
   const results = new Map<string, unknown>();
   for (const e of tail) {
+    if (e.cwd && !info.cwd) info.cwd = e.cwd;
     if (e.type === 'ai-title' && e.aiTitle) info.title = e.aiTitle;
     if (e.type === 'custom-title' && e.customTitle) info.title = e.customTitle;
     if (e.type === 'summary' && e.summary && !info.title) info.title = e.summary;
@@ -113,15 +124,15 @@ export function analyzeTranscript(file: string | undefined, wantFirstPrompt = fa
     const p = promptText(e);
     if (p) info.recent.push({ role: 'user', text: p.slice(0, 500) });
     else if (e.type === 'assistant' && !e.isSidechain) {
-      const t = blocks(e)
-        .filter((b) => b.type === 'text')
-        .map((b) => b.text)
-        .join('\n')
-        .trim();
-      if (t) info.recent.push({ role: 'assistant', text: t.slice(0, 500) });
+      for (const b of blocks(e)) {
+        if (b.type === 'text' && b.text?.trim()) info.recent.push({ role: 'assistant', text: b.text.trim().slice(0, 500) });
+        if (b.type === 'tool_use') info.recent.push({ role: 'tool', text: `${b.name} ${summarize(b.name, b.input ?? {})}`.slice(0, 200) });
+      }
     }
   }
-  info.recent = info.recent.slice(-10);
+  info.recent = info.recent.slice(-30);
+  const last = info.recent.at(-1);
+  if (last?.role === 'tool') info.activity = last.text;
 
   if (wantFirstPrompt) {
     for (const e of readSlice(file, false, 256_000)) {

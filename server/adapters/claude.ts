@@ -9,7 +9,7 @@ export interface Adapter {
   handle(event: string, payload: any, core: Core, signal: AbortSignal): Promise<object | undefined>;
 }
 
-const MAIL_PREFIX = 'Message from the user (via Checkpoint Booth):\n';
+const MAIL_PREFIX = 'Message from the user (via Codes, Please):\n';
 const NOTE_PREFIX = 'The user approved this action and attached a note:\n';
 
 const context = (hookEventName: string, text?: string) =>
@@ -58,9 +58,16 @@ export const claude: Adapter = {
       case 'Stop': {
         // Mail waiting → block the stop so Claude continues with the message.
         const mail = core.takeMail(id, 'Stop');
-        core.touch({ ...base, status: mail ? 'working' : 'idle', refresh: true });
+        // Finished its turn and now waits for the user → "your turn".
+        core.touch({ ...base, status: mail ? 'working' : 'input', refresh: true });
         return mail ? { decision: 'block', reason: MAIL_PREFIX + mail } : undefined;
       }
+
+      case 'Notification':
+        // permission_prompt is handled by PermissionRequest; these mean the agent is waiting on the user.
+        if (['idle_prompt', 'elicitation_dialog', 'agent_needs_input'].includes(p.notification_type))
+          core.touch({ ...base, status: 'input' });
+        return;
 
       case 'SessionEnd':
         core.touch({ ...base, status: 'closed' });

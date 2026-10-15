@@ -4,7 +4,7 @@ import type { SessionStatus, Stamp } from '../../server/types.ts';
 
 const en = {
   locale: 'en-GB',
-  appName: 'Checkpoint Booth',
+  appName: 'Codes, Please',
   plateTitle: 'CHECKPOINT BOOTH',
   queue: 'QUEUE',
   oldest: 'oldest',
@@ -65,7 +65,9 @@ const en = {
   stampsDrawer: 'STAMPS',
   booth: 'Booth window',
 
-  status: { working: 'WORKING', waiting: 'AWAITING', idle: 'IDLE', closed: 'CLOSED' } as Record<SessionStatus, string>,
+  status: { working: 'WORKING', waiting: 'AWAITING STAMP', input: 'YOUR TURN', idle: 'IDLE', closed: 'CLOSED' } as Record<SessionStatus, string>,
+  yourTurn: (name: string) => `${name} is waiting for you`,
+  toolLine: 'TOOL',
   historyStamp: { approve: 'APPROVE', deny: 'REJECT', note: 'NOTE', permanent: 'PERMANENT', terminal: 'TERMINAL' } as Record<string, string>,
   via: {
     PreToolUse: 'before a tool',
@@ -79,7 +81,7 @@ const en = {
   close: 'CLOSE',
   stampHistory: 'STAMP HISTORY',
   noStamps: 'No stamps for this session yet.',
-  recent: 'RECENT MESSAGES',
+  recent: 'LIVE LOG',
   user: 'USER',
   agent: 'AGENT',
   noRecords: 'No records found.',
@@ -106,7 +108,7 @@ export type Dict = typeof en;
 
 const tr: Dict = {
   locale: 'tr-TR',
-  appName: 'Kontrol Kulübesi',
+  appName: 'Codes, Please',
   plateTitle: 'KONTROL KULÜBESİ',
   queue: 'KUYRUK',
   oldest: 'en eski',
@@ -167,7 +169,9 @@ const tr: Dict = {
   stampsDrawer: 'DAMGALAR',
   booth: 'Kulübe camı',
 
-  status: { working: 'ÇALIŞIYOR', waiting: 'ONAY BEKLİYOR', idle: 'BEKLEMEDE', closed: 'KAPANDI' },
+  status: { working: 'ÇALIŞIYOR', waiting: 'ONAY BEKLİYOR', input: 'SIRA SENDE', idle: 'BEKLEMEDE', closed: 'KAPANDI' },
+  yourTurn: (name) => `${name} seni bekliyor`,
+  toolLine: 'ARAÇ',
   historyStamp: { approve: 'ONAY', deny: 'RED', note: 'NOT', permanent: 'KALICI', terminal: 'TERMİNAL' },
   via: {
     PreToolUse: 'araç öncesi',
@@ -181,7 +185,7 @@ const tr: Dict = {
   close: 'KAPAT',
   stampHistory: 'DAMGA GEÇMİŞİ',
   noStamps: 'Bu oturum için henüz damga vurulmadı.',
-  recent: 'SON YAZIŞMALAR',
+  recent: 'CANLI KAYIT',
   user: 'KULLANICI',
   agent: 'AJAN',
   noRecords: 'Kayıt bulunamadı.',

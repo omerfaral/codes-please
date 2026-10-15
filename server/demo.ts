@@ -130,7 +130,7 @@ export function runDemo(core: Core) {
       if (!s.id.startsWith('demo-') || !s.mailbox.some((m) => !m.deliveredAt)) continue;
       const p = { session_id: s.id, cwd: s.cwd, transcript_path: s.transcriptPath, stop_hook_active: false };
       log(core, s.name, 'Stop (mail)', await claude.handle('Stop', p, core, ac.signal));
-      setTimeout(() => core.touch({ agent: 'claude', sessionId: s.id, status: 'idle' }), 3000);
+      setTimeout(() => core.touch({ agent: 'claude', sessionId: s.id, status: 'input' }), 3000);
     }
   }, 5000);
 }

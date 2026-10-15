@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { structuredPatch } from 'diff';
-import { analyzeTranscript, type TranscriptInfo } from './transcript.ts';
+import { analyzeTranscript, summarize, type TranscriptInfo } from './transcript.ts';
 import type { Application, DiffLine, Doc, ServerMsg, Session, SessionStatus, Stamp } from './types.ts';
 
 export const HOME = process.env.BOOTH_HOME || path.join(os.homedir(), '.checkpoint-booth');
@@ -24,6 +24,12 @@ export function loadConfig(): { port: number; token: string } {
 
 const COLORS = ['#9b5d43', '#4f7a5c', '#56709c', '#a08638', '#86557a', '#3d7d80', '#9c4a4a', '#6f7146'];
 const UI_GONE_GRACE_MS = 15_000;
+const DISCOVER_DAYS = 7;
+const DISCOVER_EVERY_MS = 60_000;
+const LIVE_POLL_MS = 2_000;
+
+export const PROJECTS_DIR =
+  process.env.BOOTH_PROJECTS_DIR || path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects');
 
 export interface PermissionInput {
   agent: string;
@@ -49,11 +55,6 @@ export interface TouchInput {
   title?: string;
   prompt?: string;
   refresh?: boolean;
-}
-
-export function summarize(tool: string, input: Record<string, any>): string {
-  const v = input.command ?? input.file_path ?? input.notebook_path ?? input.url ?? input.query ?? input.pattern;
-  return String(v ?? JSON.stringify(input)).slice(0, 300);
 }
 
 const short = (s: string, n: number) => {
@@ -130,6 +131,7 @@ export class Core extends EventEmitter {
   private clients = 0;
   private uiGoneTimer?: NodeJS.Timeout;
   private saveTimer?: NodeJS.Timeout;
+  private transcriptMtimes = new Map<string, number>();
 
   constructor(private stateFile = path.join(HOME, 'state.json')) {
     super();
@@ -161,24 +163,113 @@ export class Core extends EventEmitter {
     }, 500);
   }
 
-  touch(p: TouchInput, info?: TranscriptInfo): Session {
-    let s = this.sessions.get(p.sessionId);
-    if (!s) {
-      const hash = crypto.createHash('md5').update(p.sessionId).digest()[0];
-      s = {
-        id: p.sessionId,
-        agent: p.agent,
-        name: '',
-        cwd: p.cwd ?? '',
-        status: 'idle',
-        color: COLORS[hash % COLORS.length],
-        lastSeen: Date.now(),
-        history: [],
-        mailbox: [],
-        recent: [],
-      };
-      this.sessions.set(s.id, s);
+  /** Begins discovering on-disk sessions and following their transcripts live. */
+  start(projectsDir = PROJECTS_DIR) {
+    this.discover(projectsDir);
+    setInterval(() => this.discover(projectsDir), DISCOVER_EVERY_MS).unref();
+    setInterval(() => this.followTranscripts(), LIVE_POLL_MS).unref();
+  }
+
+  private newSession(id: string, agent: string, cwd: string): Session {
+    const hash = crypto.createHash('md5').update(id).digest()[0];
+    const s: Session = {
+      id,
+      agent,
+      name: '',
+      cwd,
+      status: 'idle',
+      color: COLORS[hash % COLORS.length],
+      lastSeen: Date.now(),
+      history: [],
+      mailbox: [],
+      recent: [],
+    };
+    this.sessions.set(id, s);
+    return s;
+  }
+
+  private applyInfo(s: Session, info: TranscriptInfo) {
+    if (info.title) s.title = info.title;
+    if (info.firstPrompt && !s.firstPrompt) s.firstPrompt = info.firstPrompt;
+    if (info.cwd && !s.cwd) s.cwd = info.cwd;
+    if (info.recent.length) s.recent = info.recent;
+    s.activity = info.activity;
+  }
+
+  private rename(s: Session) {
+    const dir = path.basename(s.cwd || '') || s.id.slice(0, 8);
+    s.name = s.title || (s.firstPrompt ? `${dir} · ${short(s.firstPrompt, 40)}` : dir);
+  }
+
+  /** Lists Claude Code sessions found on disk, including ones that never fired a hook (e.g. started before install). */
+  discover(dir = PROJECTS_DIR) {
+    const since = Date.now() - DISCOVER_DAYS * 86400_000;
+    let found = false;
+    let projects: string[] = [];
+    try {
+      projects = fs.readdirSync(dir);
+    } catch {
+      return;
     }
+    for (const project of projects) {
+      let files: string[] = [];
+      try {
+        files = fs.readdirSync(path.join(dir, project)).filter((f) => f.endsWith('.jsonl'));
+      } catch {
+        continue;
+      }
+      for (const f of files) {
+        const id = f.slice(0, -'.jsonl'.length);
+        if (this.sessions.has(id)) continue;
+        const file = path.join(dir, project, f);
+        let mtime: number;
+        try {
+          mtime = fs.statSync(file).mtimeMs;
+        } catch {
+          continue;
+        }
+        if (mtime < since) continue;
+        const info = analyzeTranscript(file, true, 128_000);
+        if (!info.firstPrompt && !info.title) continue; // empty or aborted session
+        const s = this.newSession(id, 'claude', info.cwd ?? '');
+        s.transcriptPath = file;
+        s.lastSeen = mtime;
+        s.status = Date.now() - mtime < 3600_000 ? 'idle' : 'closed';
+        this.applyInfo(s, info);
+        this.rename(s);
+        this.transcriptMtimes.set(id, mtime);
+        found = true;
+      }
+    }
+    if (found) this.changed();
+  }
+
+  /** Re-reads transcripts that changed since the last poll so folders show the agent's progress live. */
+  private followTranscripts() {
+    let changed = false;
+    for (const s of this.sessions.values()) {
+      if (!s.transcriptPath) continue;
+      let mtime: number;
+      try {
+        mtime = fs.statSync(s.transcriptPath).mtimeMs;
+      } catch {
+        continue;
+      }
+      const prev = this.transcriptMtimes.get(s.id);
+      this.transcriptMtimes.set(s.id, mtime);
+      if (prev === undefined || prev === mtime) continue;
+      this.applyInfo(s, analyzeTranscript(s.transcriptPath, !s.firstPrompt, 256_000));
+      this.rename(s);
+      s.lastSeen = Math.max(s.lastSeen, mtime);
+      // A transcript growing without hooks telling us means the session was resumed or predates the install.
+      if (s.status === 'closed' || s.status === 'idle') s.status = 'working';
+      changed = true;
+    }
+    if (changed) this.changed();
+  }
+
+  touch(p: TouchInput, info?: TranscriptInfo): Session {
+    const s = this.sessions.get(p.sessionId) ?? this.newSession(p.sessionId, p.agent, p.cwd ?? '');
     s.lastSeen = Date.now();
     if (p.cwd) s.cwd = p.cwd;
     if (p.transcriptPath) s.transcriptPath = p.transcriptPath;
@@ -186,13 +277,8 @@ export class Core extends EventEmitter {
     if (p.title) s.title = p.title;
     if (p.prompt && !s.firstPrompt) s.firstPrompt = p.prompt;
     if (p.refresh && !info) info = analyzeTranscript(s.transcriptPath, !s.firstPrompt);
-    if (info) {
-      if (info.title) s.title = info.title;
-      if (info.firstPrompt && !s.firstPrompt) s.firstPrompt = info.firstPrompt;
-      if (info.recent.length) s.recent = info.recent;
-    }
-    const dir = path.basename(s.cwd || '') || s.id.slice(0, 8);
-    s.name = s.title || (s.firstPrompt ? `${dir} · ${short(s.firstPrompt, 40)}` : dir);
+    if (info) this.applyInfo(s, info);
+    this.rename(s);
     this.changed();
     return s;
   }

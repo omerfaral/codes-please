@@ -13,7 +13,8 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), 'booth-test-'));
 const port = 20000 + Math.floor(Math.random() * 20000);
 const token = 'test-token';
 fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ port, token }));
-const env = { ...process.env, BOOTH_HOME: home };
+// An empty projects dir keeps the user's real Claude Code sessions out of the test.
+const env = { ...process.env, BOOTH_HOME: home, BOOTH_PROJECTS_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'booth-projects-')) };
 
 function hook(payload: object): { proc: ReturnType<typeof spawn>; out: Promise<{ code: number | null; stdout: string }> } {
   const proc = spawn('node', [HOOK], { env });
@@ -31,7 +32,7 @@ let r = await hook(perm('ls')).out;
 assert.equal(r.code, 0);
 assert.equal(r.stdout, '');
 
-const server = spawn('node', ['--import', 'tsx', 'server/index.ts', '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'inherit'] });
+const server = spawn('node', ['--import', 'tsx', 'server/cli.ts', 'start', '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise<void>((res) => server.stdout!.on('data', (c) => String(c).includes('on duty') && res()));
 
 try {
@@ -96,8 +97,15 @@ try {
   await sleep(100);
   const stop = JSON.parse((await hook({ ...base, hook_event_name: 'Stop', stop_hook_active: false }).out).stdout);
   assert.equal(stop.decision, 'block');
+  // Blocked by mail → still working; a plain stop afterwards → your turn.
   assert.match(stop.reason, /README/);
   assert.equal((await hook({ ...base, hook_event_name: 'Stop', stop_hook_active: true }).out).stdout, '');
+  await sleep(100);
+  assert.equal(state.sessions.find((s: any) => s.id === 's1').status, 'input');
+  await hook({ ...base, hook_event_name: 'UserPromptSubmit', prompt: 'go' }).out;
+  await hook({ ...base, hook_event_name: 'Notification', notification_type: 'idle_prompt', message: 'waiting' }).out;
+  await sleep(100);
+  assert.equal(state.sessions.find((s: any) => s.id === 's1').status, 'input');
   ws.send(JSON.stringify({ type: 'mail', sessionId: 's1', text: 'second' }));
   await sleep(100);
   r = await hook({ ...base, hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: {}, tool_use_id: 'x' }).out;

@@ -4,6 +4,16 @@ import type { Application, Doc, Stamp } from '../../server/types.ts';
 import { useT } from './i18n.ts';
 
 const STAMP_IDS: Stamp[] = ['approve', 'deny', 'note', 'permanent'];
+const PRESS_MS = 340; // full lift → slam → lift cycle
+const IMPACT_MS = 140; // moment the rubber meets the paper
+
+/** An ink mark on the request form, in the form's own (unscaled) pixel coordinates. */
+export interface Ink {
+  stamp: Stamp;
+  x: number;
+  y: number;
+  rot: number;
+}
 const FORM_CODES: Record<Doc['kind'], string> = { request: 'Form T-1', diff: 'Form D-4', statement: 'Form B-2', research: 'Form R-7' };
 const PAGE = 26;
 
@@ -21,7 +31,7 @@ function DocShell({
   seal?: string;
   pos: { x: number; y: number };
   z: number;
-  onGrab: (dx: number, dy: number) => void;
+  onGrab: (dx: number, dy: number, el?: HTMLElement) => void;
   children: ReactNode;
 }) {
   const t = useT();
@@ -42,7 +52,7 @@ function DocShell({
       onPointerMove={(e) => {
         const s = start.current;
         if (!s) return;
-        onGrab(s.x + e.clientX - s.px - pos.x, s.y + e.clientY - s.py - pos.y);
+        onGrab(s.x + e.clientX - s.px - pos.x, s.y + e.clientY - s.py - pos.y, e.currentTarget as HTMLElement);
       }}
       onPointerUp={() => {
         start.current = undefined;
@@ -113,7 +123,7 @@ function DocBody({
   onPageTurn,
 }: {
   doc: Doc;
-  ink: Stamp | null;
+  ink: Ink | null;
   onHandBack: () => void;
   canHandBack: boolean;
   onPageTurn: () => void;
@@ -137,7 +147,12 @@ function DocBody({
           </dl>
           <p style={{ margin: '8px 0 2px', fontFamily: 'var(--px)', fontSize: 11 }}>{t.requested}</p>
           <div className="cmd scroll">{doc.target}</div>
-          <div className="stampbox">{ink ? <span className={`ink ${ink}`}>{t.stamps[ink].ink}</span> : t.stampHere}</div>
+          <div className="stampbox">{t.stampHere}</div>
+          {ink && (
+            <span key={`${ink.x},${ink.y}`} className={`ink ${ink.stamp}`} style={{ left: ink.x, top: ink.y, rotate: `${ink.rot}deg` }}>
+              {t.stamps[ink.stamp].ink}
+            </span>
+          )}
           <button className="handback" disabled={!canHandBack} onClick={onHandBack}>
             {t.handBack}
           </button>
@@ -177,24 +192,51 @@ export function Desk({
   onSubmit,
   onRules,
   onPageTurn,
+  pressRef,
 }: {
   app: Application | null;
-  ink: Stamp | null;
+  ink: Ink | null;
   note: string;
   setNote: (s: string) => void;
   noteRef: RefObject<HTMLTextAreaElement | null>;
   noteShake: boolean;
   processed: number;
-  onStamp: (s: Stamp) => void;
+  /** Called at the moment of impact; `at` is null when the stamp hit bare desk. */
+  onStamp: (s: Stamp, at: { x: number; y: number } | null) => void;
   onSubmit: () => void;
   onRules: () => void;
   onPageTurn: () => void;
+  /** Lets keyboard shortcuts press a stamp; `auto` aims it at the form's stamp box. */
+  pressRef: RefObject<((s: Stamp, auto?: boolean) => void) | null>;
 }) {
   const t = useT();
   const deskRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number }[]>([]);
   const [order, setOrder] = useState<number[]>([]);
   const [drawer, setDrawer] = useState(false);
+  const [pressing, setPressing] = useState<Stamp | null>(null);
+
+  // Like a real stamp: whatever part of the request form lies under the rubber face gets inked.
+  const press = (id: Stamp, auto = false) => {
+    if (!app || pressing || (id === 'permanent' && !app.canPersist)) return;
+    const desk = deskRef.current!;
+    const form = desk.querySelector<HTMLElement>('.doc.request');
+    const target = auto ? form?.querySelector('.stampbox') : desk.querySelector(`.stamp.${id} .face`);
+    let at: { x: number; y: number } | null = null;
+    if (form && target) {
+      const f = form.getBoundingClientRect();
+      const s = target.getBoundingClientRect();
+      const cx = s.left + s.width / 2;
+      const cy = s.top + s.height / 2;
+      const scale = f.width / form.offsetWidth; // the form may be zoomed
+      if (cx >= f.left && cx <= f.right && cy >= f.top && cy <= f.bottom) at = { x: (cx - f.left) / scale, y: (cy - f.top) / scale };
+    }
+    setDrawer(true);
+    setPressing(id);
+    setTimeout(() => onStamp(id, at), IMPACT_MS);
+    setTimeout(() => setPressing(null), PRESS_MS);
+  };
+  pressRef.current = press;
 
   // New application: spread the documents on the desk as a pile.
   useLayoutEffect(() => {
@@ -208,7 +250,7 @@ export function Desk({
         if (d.kind === 'request') return { x: 24, y: 18 };
         const k = order.indexOf(i) - 1;
         const width = d.kind === 'diff' ? 470 : 330;
-        return { x: Math.max(24, Math.min(w - width - 140, 380 + k * 40)), y: 18 + k * 44 };
+        return { x: Math.max(24, Math.min(w - width - 40, 380 + k * 40)), y: 18 + k * 44 };
       }),
     );
     setOrder(order);
@@ -231,9 +273,16 @@ export function Desk({
             seal={FORM_CODES[doc.kind]}
             pos={pos[i]}
             z={order.indexOf(i) + 1}
-            onGrab={(dx, dy) => {
+            onGrab={(dx, dy, el) => {
               setOrder((o) => [...o.filter((j) => j !== i), i]);
-              if (dx || dy) setPos((p) => p.map((q, j) => (j === i ? { x: q.x + dx, y: q.y + dy } : q)));
+              if (!dx && !dy) return;
+              // Papers may slide off any edge (e.g. up under the stamps), but 60px always stays on the desk to grab.
+              const w = deskRef.current?.clientWidth ?? 900;
+              const h = deskRef.current?.clientHeight ?? 600;
+              const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+              const ew = el?.offsetWidth ?? 300;
+              const eh = el?.offsetHeight ?? 300;
+              setPos((p) => p.map((q, j) => (j === i ? { x: clamp(q.x + dx, 60 - ew, w - 60), y: clamp(q.y + dy, 60 - eh, h - 60) } : q)));
             }}
           >
             <DocBody doc={doc} ink={ink} onHandBack={onSubmit} canHandBack={!!ink || !!note.trim()} onPageTurn={onPageTurn} />
@@ -271,7 +320,12 @@ export function Desk({
         </button>
         <div className="tray-in">
           {STAMP_IDS.map((id) => (
-            <button key={id} className={`stamp ${id}`} disabled={!app || (id === 'permanent' && !app.canPersist)} onClick={() => onStamp(id)}>
+            <button
+              key={id}
+              className={`stamp ${id}${pressing === id ? ' pressing' : ''}`}
+              disabled={!app || (id === 'permanent' && !app.canPersist)}
+              onClick={() => press(id)}
+            >
               <span className="grip" />
               <span className="face">
                 {t.stamps[id].label}

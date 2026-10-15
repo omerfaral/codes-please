@@ -1,33 +1,68 @@
 {
-  "name": "checkpoint-booth",
+  "name": "codes-please",
   "version": "0.1.0",
-  "private": true,
+  "description": "A Papers, Please-style border checkpoint for Claude Code: inspect permission requests as paperwork, stamp them, and manage your sessions.",
+  "keywords": [
+    "claude-code",
+    "claude",
+    "hooks",
+    "permissions",
+    "ai-agents",
+    "coding-agent",
+    "papers-please",
+    "pixel-art"
+  ],
+  "license": "MIT",
+  "author": "omerfaral",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omerfaral/codes-please.git"
+  },
+  "homepage": "https://github.com/omerfaral/codes-please#readme",
+  "bugs": {
+    "url": "https://github.com/omerfaral/codes-please/issues"
+  },
   "type": "module",
+  "bin": {
+    "codes-please": "bin/codes-please.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "hooks",
+    "docs/banner.svg",
+    "README.tr.md"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
   "scripts": {
-    "build": "vite build",
-    "start": "vite build && tsx server/index.ts",
-    "server": "tsx server/index.ts",
+    "build": "vite build && esbuild server/cli.ts --bundle --platform=node --format=esm --packages=external --outfile=bin/codes-please.mjs",
+    "prepack": "npm run build",
+    "start": "npm run build && node bin/codes-please.mjs start",
+    "demo": "npm run build && node bin/codes-please.mjs demo",
     "dev": "vite",
-    "demo": "vite build && tsx server/index.ts --demo",
-    "install-hooks": "tsx server/install.ts install",
-    "uninstall-hooks": "tsx server/install.ts uninstall",
+    "server": "tsx server/cli.ts start",
+    "install-hooks": "tsx server/cli.ts install",
+    "uninstall-hooks": "tsx server/cli.ts uninstall",
     "test": "tsx server/selftest.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@fontsource/pixelify-sans": "^5.3.0",
-    "@fontsource/vt323": "^5.3.0",
     "diff": "^9.0.0",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@fontsource/pixelify-sans": "^5.3.0",
+    "@fontsource/vt323": "^5.3.0",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.1.2",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"

@@ -1,6 +1,7 @@
 // Agent-agnostic data model shared by the server and the web UI.
 
-export type SessionStatus = 'working' | 'waiting' | 'idle' | 'closed';
+/** working: agent busy · waiting: needs a stamp · input: finished, your turn · idle: no activity yet · closed: ended */
+export type SessionStatus = 'working' | 'waiting' | 'input' | 'idle' | 'closed';
 export type Stamp = 'approve' | 'deny' | 'note' | 'permanent';
 
 export interface HistoryEntry {
@@ -20,7 +21,7 @@ export interface Mail {
 }
 
 export interface ChatLine {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool';
   text: string;
 }
 
@@ -38,6 +39,7 @@ export interface Session {
   history: HistoryEntry[];
   mailbox: Mail[];
   recent: ChatLine[];
+  activity?: string;
 }
 
 export interface DiffLine {

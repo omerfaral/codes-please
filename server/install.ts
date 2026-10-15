@@ -1,12 +1,14 @@
-// Install/uninstall: backs up ~/.claude/settings.json and adds/removes only Checkpoint Booth hook entries.
+// Install/uninstall: backs up ~/.claude/settings.json and adds/removes only Codes, Please hook entries.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadConfig } from './core.ts';
+import { HOME, loadConfig } from './core.ts';
 
 const MARKER = 'booth-hook.cjs';
 const LEGACY_MARKERS = ['kulube-hook.cjs']; // earlier name of the hook script
-const HOOK = path.resolve(import.meta.dirname, '../hooks', MARKER);
+const HOOK_SRC = path.resolve(import.meta.dirname, '../hooks', MARKER);
+// Hooks point at a copy in BOOTH_HOME, so they keep working if the package moves (e.g. an npx cache is cleared).
+const HOOK = path.join(HOME, MARKER);
 const SETTINGS = process.env.BOOTH_SETTINGS || path.join(os.homedir(), '.claude', 'settings.json');
 
 // Seconds. PermissionRequest waits for a human decision; the others return immediately.
@@ -18,6 +20,7 @@ const EVENTS: Record<string, number> = {
   UserPromptSubmit: 10,
   SessionStart: 10,
   SessionEnd: 10,
+  Notification: 10,
 };
 
 type Settings = { hooks?: Record<string, { matcher?: string; hooks: { command?: string }[] }[]> };
@@ -45,7 +48,7 @@ export function add(s: Settings, hookPath = HOOK): Settings {
   return s;
 }
 
-function main(cmd: string) {
+export function run(cmd: 'install' | 'uninstall') {
   let raw = '{}';
   try {
     raw = fs.readFileSync(SETTINGS, 'utf8');
@@ -58,16 +61,12 @@ function main(cmd: string) {
   }
   if (cmd === 'install') {
     loadConfig(); // create the access token on first install
+    fs.copyFileSync(HOOK_SRC, HOOK);
     add(settings);
-  } else if (cmd === 'uninstall') strip(settings);
-  else {
-    console.log('Usage: install | uninstall');
-    process.exit(1);
-  }
+  } else strip(settings);
   fs.mkdirSync(path.dirname(SETTINGS), { recursive: true });
   fs.writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + '\n');
-  console.log(cmd === 'install' ? `Hooks added (${Object.keys(EVENTS).join(', ')}).` : 'Checkpoint Booth hooks removed.');
+  console.log(cmd === 'install' ? `Hooks added (${Object.keys(EVENTS).join(', ')}).` : 'Codes, Please hooks removed.');
   console.log('For already-open Claude Code sessions, open and close the /hooks menu or restart the session.');
 }
 
-if (process.argv[1] && import.meta.filename === path.resolve(process.argv[1])) main(process.argv[2]);
