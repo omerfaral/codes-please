@@ -1,0 +1,35 @@
+{
+  "name": "checkpoint-booth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "start": "vite build && tsx server/index.ts",
+    "server": "tsx server/index.ts",
+    "dev": "vite",
+    "demo": "vite build && tsx server/index.ts --demo",
+    "install-hooks": "tsx server/install.ts install",
+    "uninstall-hooks": "tsx server/install.ts uninstall",
+    "test": "tsx server/selftest.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource/pixelify-sans": "^5.3.0",
+    "@fontsource/vt323": "^5.3.0",
+    "diff": "^9.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^6.1.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}
