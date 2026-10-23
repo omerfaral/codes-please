@@ -6,7 +6,7 @@
 
 **Kodlama ajanın sınırı geçmek istiyor. Müfettiş sensin.**
 
-[![Demo: bir talebi damgalamak, diff okumak, rm -rf'i reddetmek, bir oturum klasörünü açmak](docs/demo.gif)](docs/demo.mp4)
+[![Demo: bir talebi damgalamak, diff okumak, rm -rf'i reddetmek, bir oturum klasörünü açmak](https://raw.githubusercontent.com/omerfaral/codes-please/main/docs/demo.gif)](https://github.com/omerfaral/codes-please/raw/main/docs/demo.mp4)
 
 *`codes-please demo` ile kaydedildi. Tam kalite video için tıkla.*
 

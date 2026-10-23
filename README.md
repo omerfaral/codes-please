@@ -6,7 +6,7 @@
 
 **Your coding agent wants to cross the border. You are the inspector.**
 
-[![Demo: stamping a request, reading a diff, rejecting rm -rf, opening a session folder](docs/demo.gif)](docs/demo.mp4)
+[![Demo: stamping a request, reading a diff, rejecting rm -rf, opening a session folder](https://raw.githubusercontent.com/omerfaral/codes-please/main/docs/demo.gif)](https://github.com/omerfaral/codes-please/raw/main/docs/demo.mp4)
 
 *Recorded with `codes-please demo`. Click for the full-quality video.*
 
