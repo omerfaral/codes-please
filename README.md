@@ -6,6 +6,10 @@
 
 **Your coding agent wants to cross the border. You are the inspector.**
 
+[![Demo: stamping a request, reading a diff, rejecting rm -rf, opening a session folder](docs/demo.gif)](docs/demo.mp4)
+
+*Recorded with `codes-please demo`. Click for the full-quality video.*
+
 Codes, Please is a *Papers, Please*-style checkpoint for Claude Code. Every time the agent asks for permission (to run a command, edit a file, fetch a page), the request doesn't show up as a terminal prompt. Instead, an applicant walks up to your booth window and slides their paperwork across a wooden desk:
 - a request form,
 - a diff of the file they want to change,

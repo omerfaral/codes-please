@@ -6,6 +6,10 @@
 
 **Kodlama ajanın sınırı geçmek istiyor. Müfettiş sensin.**
 
+[![Demo: bir talebi damgalamak, diff okumak, rm -rf'i reddetmek, bir oturum klasörünü açmak](docs/demo.gif)](docs/demo.mp4)
+
+*`codes-please demo` ile kaydedildi. Tam kalite video için tıkla.*
+
 Codes, Please, Claude Code için *Papers, Please* tarzı bir sınır kontrol kulübesi. Ajan her izin istediğinde (bir komut çalıştırmak, dosya düzenlemek, bir sayfa çekmek) bu istek terminalde soru olarak çıkmıyor. Bunun yerine bir başvuru sahibi kulübe camına gelip evraklarını ahşap masanın üstünden sana uzatıyor:
 - talep formu,
 - değiştirmek istediği dosyanın diff'i,
