@@ -1,6 +1,6 @@
 {
   "name": "codes-please",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A Papers, Please-style border checkpoint for Claude Code: inspect permission requests as paperwork, stamp them, and manage your sessions.",
   "keywords": [
     "claude-code",
